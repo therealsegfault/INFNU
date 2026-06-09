@@ -27,6 +27,7 @@ jobs:
 
       - name: Patch dtrace LLVM headers
         run: |
+          mkdir -p dtrace-338.0.1/include/llvm-Support
           curl -fsSL https://gist.githubusercontent.com/knightsc/cf46670ea023168cdfe98b4a295f2cf4/raw/00f0b13c00983e4010ba0019eeeecb0ba9a381e7/PointerLikeTypeTraits.h \
             > dtrace-338.0.1/include/llvm-Support/PointerLikeTypeTraits.h
           curl -fsSL https://gist.githubusercontent.com/knightsc/fe2cbe276a006fe601b704cd5286047f/raw/bb44a1b8cbfa22a8d814368189a193394b9cfe4c/DataTypes.h \
