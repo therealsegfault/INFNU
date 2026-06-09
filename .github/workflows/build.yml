@@ -32,10 +32,8 @@ jobs:
             > dtrace-338.0.1/include/llvm-Support/PointerLikeTypeTraits.h
           curl -fsSL https://gist.githubusercontent.com/knightsc/fe2cbe276a006fe601b704cd5286047f/raw/bb44a1b8cbfa22a8d814368189a193394b9cfe4c/DataTypes.h \
             > dtrace-338.0.1/include/llvm-Support/DataTypes.h
-
-      - name: Build and install CTF tools
-        run: |
-        - name: Build and install CTF tools
+            
+       - name: Build and install CTF tools
         run: |
           cd dtrace-338.0.1
           mkdir -p obj dst sym
