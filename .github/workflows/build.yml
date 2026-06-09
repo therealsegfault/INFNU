@@ -1,0 +1,115 @@
+name: Build XNU for Raspberry Pi 3
+
+on:
+  push:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-13
+
+    steps:
+      - name: Checkout INFNU
+        uses: actions/checkout@v4
+
+      - name: Resolve SDK and toolchain paths
+        run: |
+          echo "SDKPATH=$(xcrun --sdk iphoneos --show-sdk-path)" >> $GITHUB_ENV
+          echo "TOOLCHAINPATH=$(xcode-select -p)/Toolchains/XcodeDefault.xctoolchain" >> $GITHUB_ENV
+
+      - name: Download dependencies
+        run: |
+          curl -fsSL https://opensource.apple.com/tarballs/dtrace/dtrace-338.0.1.tar.gz | tar -xf-
+          curl -fsSL https://opensource.apple.com/tarballs/AvailabilityVersions/AvailabilityVersions-45.tar.gz | tar -xf-
+          curl -fsSL https://opensource.apple.com/tarballs/libplatform/libplatform-220.tar.gz | tar -xf-
+          curl -fsSL https://opensource.apple.com/tarballs/libdispatch/libdispatch-1173.0.3.tar.gz | tar -xf-
+
+      - name: Patch dtrace LLVM headers
+        run: |
+          curl -fsSL https://gist.githubusercontent.com/knightsc/cf46670ea023168cdfe98b4a295f2cf4/raw/00f0b13c00983e4010ba0019eeeecb0ba9a381e7/PointerLikeTypeTraits.h \
+            > dtrace-338.0.1/include/llvm-Support/PointerLikeTypeTraits.h
+          curl -fsSL https://gist.githubusercontent.com/knightsc/fe2cbe276a006fe601b704cd5286047f/raw/bb44a1b8cbfa22a8d814368189a193394b9cfe4c/DataTypes.h \
+            > dtrace-338.0.1/include/llvm-Support/DataTypes.h
+
+      - name: Build and install CTF tools
+        run: |
+          cd dtrace-338.0.1
+          mkdir -p obj dst sym
+          xcodebuild install \
+            -target ctfconvert -target ctfdump -target ctfmerge \
+            -UseModernBuildSystem=NO \
+            ARCHS="x86_64" \
+            SDKROOT=macosx \
+            SRCROOT="${PWD}" \
+            OBJROOT="${PWD}/obj" \
+            SYMROOT="${PWD}/sym" \
+            DSTROOT="${PWD}/dst"
+          sudo ditto \
+            "${PWD}/dst/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain" \
+            "${{ env.TOOLCHAINPATH }}"
+
+      - name: Install AvailabilityVersions
+        run: |
+          cd AvailabilityVersions-45
+          mkdir -p dst
+          make install SRCROOT="${PWD}" DSTROOT="${PWD}/dst"
+          sudo ditto "${PWD}/dst/usr/local" "${{ env.SDKPATH }}/usr/local"
+
+      - name: Install XNU headers
+        run: |
+          mkdir -p BUILD.hdrs/obj BUILD.hdrs/sym BUILD.hdrs/dst
+          make installhdrs \
+            LOGCOLORS=y \
+            SDKROOT=iphoneos \
+            ARCH_CONFIGS=ARM64 \
+            MACHINE_CONFIGS=BCM2837 \
+            ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64 \
+            SRCROOT="${PWD}" \
+            OBJROOT="${PWD}/BUILD.hdrs/obj" \
+            SYMROOT="${PWD}/BUILD.hdrs/sym" \
+            DSTROOT="${PWD}/BUILD.hdrs/dst"
+          sudo chown -R root:wheel BUILD.hdrs/dst/
+          sudo ditto BUILD.hdrs/dst "${{ env.SDKPATH }}"
+
+      - name: Install libplatform headers
+        run: |
+          sudo mkdir -p "${{ env.SDKPATH }}/usr/local/include/os/internal"
+          sudo ditto \
+            libplatform-220/private/os/internal \
+            "${{ env.SDKPATH }}/usr/local/include/os/internal"
+
+      - name: Build libdispatch libfirehose_kernel
+        run: |
+          cd libdispatch-1173.0.3
+          xcodebuild install \
+            -project libdispatch.xcodeproj \
+            -target libfirehose_kernel \
+            -sdk iphoneos \
+            -UseModernBuildSystem=NO \
+            ENABLE_BITCODE="no" \
+            SRCROOT="${PWD}" \
+            OBJROOT="${PWD}/obj" \
+            SYMROOT="${PWD}/sym" \
+            DSTROOT="${PWD}/dst"
+          sudo ditto "${PWD}/dst/usr/local" "${{ env.SDKPATH }}/usr/local"
+
+      - name: Build XNU kernel
+        run: |
+          make \
+            LOGCOLORS=y \
+            SDKROOT=iphoneos \
+            ARCH_CONFIGS=ARM64 \
+            KERNEL_CONFIGS=DEBUG \
+            ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG=arm64 \
+            MACHINE_CONFIGS=BCM2837 \
+            BUILD_WERROR=0
+
+      - name: Upload kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: xnu-bcm2837-debug
+          path: |
+            BUILD/obj/DEBUG_ARM64/kernel.debug
+            BUILD/obj/DEBUG_ARM64/kernel.debug.unstripped
+          if-no-files-found: warn
