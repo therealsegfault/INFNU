@@ -35,9 +35,12 @@ jobs:
 
       - name: Build and install CTF tools
         run: |
+        - name: Build and install CTF tools
+        run: |
           cd dtrace-338.0.1
           mkdir -p obj dst sym
           xcodebuild install \
+            -project dtrace.xcodeproj \
             -target ctfconvert -target ctfdump -target ctfmerge \
             -UseModernBuildSystem=NO \
             ARCHS="x86_64" \
