@@ -2,7 +2,7 @@ name: Build XNU for Raspberry Pi 3
 
 on:
   push:
-    branches: [ master, main ]
+    branches: [ florent-base ]
   workflow_dispatch:
 
 jobs:
